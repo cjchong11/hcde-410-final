@@ -1,0 +1,254 @@
+---
+title: "hcde project"
+author: "celine chong"
+date: "5/25/2022"
+output: pdf_document
+---
+
+First, I import all of the necessary libraries. I added more libraries here as I went through the process.
+```{r setup, include=FALSE}
+# allows me to read in Excel files
+install.packages("readxl")
+library("readxl")
+
+# useful for pipe operator
+install.packages("magrittr ") 
+library("magrittr")
+
+library("dplyr")
+
+# useful for working with datetime objects
+install.packages("lubridate")
+library("lubridate")
+```
+
+
+At this point, I performed some preliminary "cleaning" in the 5 datasets I used. (There are three datasets pertaining to seoul air pollution and 2 related to asthma cases). By cleaning I mean that I changed the header names to English (using a direct/literal translation) and then for the three "seoul air pollution" files I used Excel and using the "find and replace" function, changed the names of each district from Korean to English. (The names are consistent between these three files)
+
+I load all five (Excel) files into respective dataframes. Note: the seoul air pollution data begins from 2008 but I use with data starting from 2012 because the asthma data began collecting in 2014. 
+```{r seoul microdust levels}
+# loading air pollution data into dataframes
+seoul_pm_1215 <- read_excel("seoul air pollution 2012-2015.xlsx") # pm stands for particulate matter
+seoul_pm_1619 <- read_excel("seoul air pollution 2016-2019.xlsx")
+seoul_pm_2021 <- read_excel("seoul air pollution 2020-2021.xlsx")
+
+asthma_district_all <- read_excel("asthma district.xlsx") # contains data for all districts of all cities
+asthma_city_all <- read_excel("asthma city.xlsx") # contains data for all cities
+```
+
+Then, I print out the number of rows and the bottom of the seoul air pollution datasets to make sure that none of the encoding is broken and that the number of rows match that of the original Excel files. 
+```{r}
+# inspecting the data
+nrow(seoul_pm_1215)
+tail(seoul_pm_1215)
+
+nrow(seoul_pm_1619)
+tail(seoul_pm_1619)
+
+nrow(seoul_pm_2021)
+tail(seoul_pm_2021)
+```
+
+Then, I filter out data I don't need from the two asthma files. Both files contain data for all of South Korea, not just Seoul. For the asthma_district_all dataframe, I subset it using < 12000 because all Seoul districts are coded in the 11000s and no districts are below 11000. This means that the only district adjacent to Seoul numerically is 12000. Therefore, I filter out all districts that are less than 12000. For asthma_city_all, I filter out all rows that have the city code 11 because this is what Seoul is encoded with in the dataset. Both of the new dataframes now only contain information about Seoul. 
+```{r}
+# filtering only Seoul data into asthma dataframes
+
+# all Seoul districts are 11XXX (11 thousand something) and no districts exist below 11000 encodings.
+asthma_district <- subset(asthma_district_all, asthma_district_all$`District code` < 12000)
+# 11 is the district code for Seoul
+asthma_city <- subset(asthma_city_all, asthma_city_all$City == 11)
+```
+
+To begin aggregating the three seoul air pollution files into one dataframe, I begin with the first two- just so that if something goes wrong it isn't as hard to correct the mistake. I take the data recorded from 2012-2015 and use rbind() to append that data to the 2016-2019 seoul_pm_1619 dataframe. I then create a dataframe "seoul_pm_1219" to contain all the data from 2012-2019. 
+```{r}
+# aggregating first two datasets into one dataframe
+seoul_pm_1219 <- rbind(seoul_pm_1215, seoul_pm_1619)
+```
+
+I print out the number of rows and the bottom of the dataframe to check if the number of rows match up to the sum of the two binded dataframes (they do) and make sure none of the encoding is broken or otherwise incorrect. 
+```{r}
+# checking to make sure it was bound correctly
+nrow(seoul_pm_1219)
+tail(seoul_pm_1219)
+```
+
+Then, I create a new dataframe which contains all seoul air pollution data from 2012-2021. I do this using rbind() which appends the seoul_pm_1219 dataframe to the third (not yet appended) dataframe, seoul_pm_2021. 
+```{r}
+# create a dataframe containing all seoul air pollution data
+seoul_pm_all <- rbind(seoul_pm_1219, seoul_pm_2021)
+```
+
+Because seoul_pm_all contains data on all districts and the calculated averages particulate matter levels of these districts, I want to make two dataframes- one that contains just averages and one that contains solely district data with no averages. This is so that I can have a dataframe (without averages) that matches the structure of the asthma dataframe (which does not have averages) but I also don't want to lose the averaged information since I will need it for visualizations later.
+
+So, I subset both average and non-average data from seoul_pm_all and load that data into seoul_pm_average (contains only averages) and seoul_pm (does not contain averages).
+```{r}
+# creating a dataframe of just Seoul particulate matter averages
+seoul_pm_average <- subset(seoul_pm_all, seoul_pm_all$District == "Average")
+
+# creating a dataframe without average values since the asthma dataset does not contain averages
+seoul_pm <- subset(seoul_pm_all, seoul_pm_all$District != "Average")
+```
+
+The only reason why I translated the Korean district names into English for the seoul air pollution files is because the Korean text broke when I loaded the files into R Studio. Since the asthma datasets don't contain Korean characters (because I already translated the header names) and the districts are numbers, I can change the numerical district codes into their respective district names using R!
+
+To do this, first I change all of the values in the "District code" field to characters. Since district names are stored as a String, it is easier for to replace values of the same type then to try to change the district code which was stored as an int into a String. 
+```{r}
+# creating a function to add the district name to the correct district code
+asthma_district$`District code` <- as.character(asthma_district$`District code`)
+```
+
+I use code to manually change all String district code numbers to their English names. I followed the same spelling conventions that I used in the seoul_pm dataframe so that when I combine the dataframes into one, they can be joined using the district names. I don't have to do any additional encoding work for the asthma city file since I already subsetted the Seoul data and it contains only Seoul data. Since it contains information on only one city, it is not helpful to further encode the city code "11" to "Seoul" since it could only be for Seoul. 
+```{r}
+# I used the below formula which is from https://datatofish.com/replace-values-dataframe-r/
+# df[df == "Old Value"] <- "New Value" 
+
+# rename district codes to represent district names
+asthma_district[asthma_district == "11110"] <- "Jongro"
+asthma_district[asthma_district == "11140"] <- "Junggu"
+asthma_district[asthma_district == "11170"] <- "Yongsan"
+asthma_district[asthma_district == "11200"] <- "Seongdong"
+asthma_district[asthma_district == "11215"] <- "Gwangjin"
+asthma_district[asthma_district == "11230"] <- "Dongdaemun"
+asthma_district[asthma_district == "11260"] <- "Jungrang"
+asthma_district[asthma_district == "11290"] <- "Seongbuk"
+asthma_district[asthma_district == "11305"] <- "Gangbuk"
+asthma_district[asthma_district == "11320"] <- "Dobong"
+asthma_district[asthma_district == "11350"] <- "Nowon"
+asthma_district[asthma_district == "11380"] <- "Eunpyeong"
+asthma_district[asthma_district == "11410"] <- "Seodaemun"
+asthma_district[asthma_district == "11440"] <- "Mapo"
+asthma_district[asthma_district == "11470"] <- "Yangcheon"
+asthma_district[asthma_district == "11500"] <- "Gangseo"
+asthma_district[asthma_district == "11530"] <- "Guro"
+asthma_district[asthma_district == "11545"] <- "Geumcheon"
+asthma_district[asthma_district == "11560"] <- "Youngdeungpo"
+asthma_district[asthma_district == "11590"] <- "Dongjak"
+asthma_district[asthma_district == "11620"] <- "Gwanak"
+asthma_district[asthma_district == "11650"] <- "Seocho"
+asthma_district[asthma_district == "11680"] <- "Gangnam"
+asthma_district[asthma_district == "11710"] <- "Songpa"
+asthma_district[asthma_district == "11740"] <- "Gangdong"
+```
+
+Now, I rename the field "District code" in the asthma_district dataframe we were just working out of to "District" to make it uniform with the seoul_pm dataframe. This makes it easier to join the two dataframes later on. 
+```{r}
+# renamed district code field to district
+names(asthma_district)[names(asthma_district) == "District code"] <- "District"
+```
+
+Because the Seoul particulate matter dataframe and asthma dataframes have differing time periods, I'm trying to standardize the time range by filtering for only data between 2014 and 2020 (until the beginning of 2021). This makes combining the dataframes together easier later on.
+```{r}
+# fix seoul_pm dataframe to start same day as asthma datasets
+seoul_pm <- seoul_pm[seoul_pm$Date >= "2014-01-01" & seoul_pm$Date <= "2021-01-01",]
+
+# fix asthma dataframes to make sure they end the same day as seoul pm monitoring dataframe
+asthma_district_clean <- asthma_district[asthma_district$Date < "20210102", ]
+asthma_city_clean <- asthma_city[asthma_city$Date < "20210102", ]
+```
+
+Now, I want to aggregate the entire seoul_pm dataframe (this one contains no averages). Currently, the data is formatted in hourly. Aggregating it into daily is so that I can aggregate it into monthly and yearly data easier later on. Originally I wanted to try to aggregate the hourly data for each district into one day for the monthly and yearly but I found a different way. However, I still kept this daily aggregation code so that I could look at the patterns of particulate matter over time and graph that temporality to observe patterns. 
+
+First, I copy the seoul_pm dataframe into seoul_pm_daily, this is so that if I mess up, I don't have to reload the dataframe or worry about making mistakes. By having line 152, I'm able to constantly reload the seoul_pm data into seoul_pm_daily and be able to correct mistakes easily. 
+```{r}
+# trying to aggregate each district by day
+# make a new dataframe called seoul_pm_daily so that I don't ruin the original dataframe
+seoul_pm_daily <- seoul_pm
+
+# Here, I am aggregating each district into daily by grouping by on the day (this allows hourly to go into daily). Then I have to create two new columns for the new aggregated values of PM10 and PM2.5 (averages). I create a new dataframe that contains just daily data of Seoul particulate matter levels. 
+
+# I used this to formulate this code  https://stackoverflow.com/questions/58495431/how-to-calculate-daily-average-of-hourly-data-and-for-different-variables-at-the 
+seoul_pm_daily <- seoul_pm %>%
+  mutate(Date = as.Date(Date,  format = "%d/%m/%Y")) %>%
+  group_by(Date, District) %>%
+  summarise(AveragePM10 = mean(PM10),
+            AveragePM25 = mean(PM25))
+  
+```
+
+Now, I'm preparing to combine the asthma_district and seoul_pm dataframes together (I didn't end up needing seoul_pm_daily for this).
+
+First, I try to make the "Date" column for both dataframes into datetime objects so that when I join by district name and date, both variables are of the same time and therefore easier to combine. I created a new dataframe to hold the new datetime for asthma_district called asthma_district_clean since I might need the original date format later on. 
+
+I also use seoul_pm instead of seoul_pm_daily to begin the monthly aggregation process because I found that when I'm aggregating into months I have to aggregate PM10 and PM2.5 and I didn't want to use already aggregated PM10 and PM2.5 values from seoul_pm_daily in those new values. 
+```{r}
+# making all date columns into datetime objects
+seoul_pm$Date <- as.Date(seoul_pm$Date, format = "%Y-%m-%d")
+
+# this one was stored super weird (no hyphens) so had to do extra steps for it
+asthma_district_clean$Date <- as.character(asthma_district_clean$Date)
+asthma_district_clean$Date <- as.Date(as.character(asthma_district_clean$Date),format="%Y%m%d")
+```
+
+I'm creating two new dataframes to hold the monthly data for seoul_pm (particulate matter levels measured in each district) and asthma_district (number of asthma cases reported in each district). This is so that when I mess up (and I did a lot) it would be less work to get the old dataframe back.
+```{r}
+# aggregating daily data into monthly
+# creating new dataframes to hold monthly data
+seoul_pm_monthly <- seoul_pm
+asthma_district_monthly <- asthma_district_clean
+```
+
+I create a new column in both dataframes I created in line 181-182 called "Month" so that I can store monthly data. However, if I want to be able to extract yearly data I need to put the year first. Additionally, if I don't put the year in the Month field, then when I aggregate the month data, it aggregates, for example, all Januarys and all Februaries together regardless of year. By also storing the year this way, I don't have to create a separate year column if I choose to do anything with the yearly data later on. 
+```{r}
+#create new columns that hold monthly and yearly data to group by later
+seoul_pm_monthly$Month <- format(seoul_pm_monthly$Date, "%Y-%m") 
+asthma_district_monthly$Month <- format(asthma_district_monthly$Date, "%Y-%m")
+```
+
+Then, I aggregate both dataframes by month and store that in asthma_district_monthly and seoul_pm_monthly and also create new aggregate columns which hold information about the average number of asthma cases reported in that district and the average PM10 and PM2.5 levels. I make sure to not only group by month but also district so that I get accurate averages for each district during that particular month.
+```{r}
+# aggregate data into months (by year)
+asthma_district_monthly <- asthma_district_monthly %>%
+  group_by(Month, District) %>%
+  summarize(`Average number of cases` = mean(`Number of cases`))
+
+seoul_pm_monthly <- seoul_pm_monthly %>%
+  group_by(Month, District) %>%
+  summarize(AveragePM10 = mean(PM10, na.rm = TRUE),
+            AveragePM25 = mean(PM25, na.rm = TRUE))
+```
+
+Now, I join the two dataframes containing monthly data into one dataframe called asthma_pm which contains information about the average number of reported cases and the average PM10 and PM2.5 levels measured in a certain district. I merge the dataframes on month and district to maintain the correct values for each district in a particular month. 
+```{r}
+# merging the two dataframes (asthma data and pm monitoring data) yay!
+asthma_pm <- merge(x = seoul_pm_monthly, y = asthma_district_monthly,by= c("Month","District"))
+```
+
+To answer my third research question, I run a regression of average number of asthma cases on the particulate matter levels (using the asthma_pm dataframe we just created). 
+```{r}
+# running the regression 
+lm_asthma_pm <- lm(`Average number of cases` ~ AveragePM10 + AveragePM25, data = asthma_pm)
+summary(lm_asthma_pm)
+```
+
+I'm running a regression on asthma cases just against average PM10 levels to see if that changes anything from running a regression on both PM levels.
+```{r}
+lm_asthma_pm10 <- lm(`Average number of cases` ~ AveragePM10, data = asthma_pm)
+summary(lm_asthma_pm10)
+```
+
+Now, I'm plotting the regression for the number of asthma cases and the average levels  of PM10. 
+```{r}
+plot(asthma_pm$AveragePM10, asthma_pm$`Average number of cases`, 
+     main = "Comparison of average asthma cases and average PM10 levels",
+     xlab = "Average PM10 Levels",
+     ylab = "Average number of asthma Cases")
+abline(lm_asthma_pm10,
+       lwd = 2, col = "hotpink1")
+```
+
+Then, I'm running a regression of average asthma cases just against average PM2.5 levels
+```{r}
+lm_asthma_pm25 <- lm(`Average number of cases` ~ AveragePM25, data = asthma_pm)
+summary(lm_asthma_pm25)
+```
+
+Now, I'm plotting a regression of the number of average asthma cases against the average levels of PM2.5
+```{r}
+plot(asthma_pm$AveragePM25, asthma_pm$`Average number of cases`, 
+     main = "Comparison of average asthma cases and average PM2.5 levels",
+     xlab = "Average PM2.5 Levels",
+     ylab = "Average number of asthma Cases")
+abline(lm_asthma_pm25,
+       lwd = 2, col = "hotpink1")
+```
+
